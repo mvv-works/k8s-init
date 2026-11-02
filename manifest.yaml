@@ -1,0 +1,74 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: roboshop
+  # labels related to deployment resource
+  labels:
+    project: roboshop
+    tier: db
+    component: mysql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      project: roboshop
+      tier: frontend
+      component: frontend
+  #pod
+  template:
+    metadata:
+      labels:
+        project: roboshop
+        tier: frontend
+        component: frontend
+    spec:
+      serviceAccountName: roboshop-mysql
+      initContainers:
+      - name: secret-reader
+        image: amazon/aws-cli
+        command: 
+        - sh
+        - -c
+        - |
+            aws secretsmanager get-secret-value --secret-id \
+            roboshop/mysql_root_password --query SecretString \
+            --output text | jq -r '.mysql_root_password' > /secrets/mysql-secret.txt
+            echo "Secret fetched successfully"
+            cat /secrets/mysql-secret.txt   # just for testing , we should not do this 
+        volumeMounts:
+        - name: mysql-sercret
+          mountPath: /secrets
+      containers:
+      - name: mysql
+        image: joindevops/mysql:4.0.0 
+        args: ["--mysql-native-password=ON"]
+        volumeMounts:
+        - name: mysql-sercret
+          mountPath: /secrets
+      volumes:
+      - name: mysql-sercret
+        emptyDir: {}
+       
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: roboshop 
+  # service labels
+  labels: 
+    project: roboshop
+    tier: frontend
+    component: frontend
+spec:
+  # service user the below labels to select the pods
+  selector:
+    project: roboshop
+    tier: frontend
+    component: frontend
+  ports:
+    - protocol: TCP
+      port: 3306  # service port
+      targetPort: 3306 # container port 
+       
